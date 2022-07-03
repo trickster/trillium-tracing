@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::time::Instant;
 
 use tracing::{error, error_span, field, info, info_span, warn, warn_span};
-use trillium::async_trait;
+use trillium::{async_trait, HeaderName};
 use trillium::{Conn, Handler, Info};
 
 struct TracerRun;
@@ -14,10 +14,21 @@ impl Handler for Tracer {
         let path = path(&conn);
         let method = conn.method();
         let ip = ip(&conn);
-        info_span!("Request", http.method = ?method, ip = ?ip, path = %path).in_scope(|| {
-            info!("received");
-            conn.with_state(TracerRun)
-        })
+        let headers = conn.headers();
+        let hn: HeaderName = "Accept".into();
+        let k = headers.get_str(hn);
+        info!(k);
+
+        // for i in headers.iter() {
+        //     info!("{}", i.0.into_owned());
+        //     info!("{:?}", i.1);
+        // }
+
+        info_span!("Request", http.method = ?method, ip = ?ip, path = %path, headers = ?headers)
+            .in_scope(|| {
+                info!("received");
+                conn.with_state(TracerRun)
+            })
     }
     async fn init(&mut self, info: &mut Info) {
         info!("Starting server");
