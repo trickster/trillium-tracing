@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use tracing::{error, error_span, field, info, info_span, warn, warn_span};
 use trillium::async_trait;
-use trillium::{Conn, Handler, Info, Status};
+use trillium::{Conn, Handler, Info};
 
 struct TracerRun;
 
@@ -14,11 +14,10 @@ impl Handler for Tracer {
         let path = path(&conn);
         let method = conn.method();
         let ip = ip(&conn);
-        info_span!("Request", http.method = ?method, ip = ?ip, path = ?path).in_scope(|| {
+        info_span!("Request", http.method = ?method, ip = ?ip, path = %path).in_scope(|| {
             info!("received");
             conn.with_state(TracerRun)
         })
-        // conn.with_state(TracerRun)
     }
     async fn init(&mut self, info: &mut Info) {
         info!("Starting server");
@@ -28,33 +27,34 @@ impl Handler for Tracer {
     async fn before_send(&self, mut conn: Conn) -> Conn {
         let response_len = conn.response_len().unwrap_or_default();
         let response_time = response_time(&conn).to_string();
+
+        // TODO: If the conn.status is not set by a route, should we set to NotFound by default if
+        // the user doesn't set the default handler in trillium?
         let status = conn.status(); //.unwrap_or_else(|| Status::NotFound);
 
         if conn.state::<TracerRun>().is_some() {
             conn.inner_mut().after_send(move |s| {
-                info_span!("Response", http.status_code = field::Empty, http.duration = ?response_time, http.response_len = ?response_len).in_scope(|| {
+                let response_span = info_span!("Response", http.status_code = field::Empty, http.duration = ?response_time, http.response_len = ?response_len);
+                response_span.in_scope(|| {
                     if let Some(status) = status {
+                        response_span.record("http.status_code", &(status as u32));
                         if s.is_success() {
                             if status.is_server_error() {
-                                let span = error_span!("Internal error", error = field::Empty);
-                                span.record("error", &"server error");
+                                error!("Internal Server error");
                             } else if status.is_client_error() {
-                                warn_span!("Client error").in_scope(|| warn!("sent"));
+                                warn_span!("Client error").in_scope(|| warn!("sent"))
                             } else {
-                                // info_span!("Request", http.method = ?method, ip = ?ip, path = ?path).in_scope(|| {
                                 info!("sent")
-                                // });
                             }
                         } else {
-                            let span = error_span!("Internal error", error = field::Empty);
-                            span.in_scope(|| error!("cannot be sent"));
-                            // error_span!("Internal error").in_scope(|| warn!("sending error"));
+                            error_span!("Internal error").in_scope(|| warn!("cannot be sent"))
                         }
                     } else {
-                        // warn!("sent response with no status");
-                        let span = error_span!("Server error", error = field::Empty);
-                        span.record("error", &"sent response with no status");
-                        error_span!("Internal error").in_scope(|| error!("status not set, set the default status"));
+                        // This place shouldn't be reached ideally
+                        // Set the default status in the router
+                        error_span!("Internal error").in_scope(|| 
+                            error!("status not set, set the default status")
+                        );
                     }
 
                 });
