@@ -11,7 +11,14 @@ struct TracerRun;
 #[async_trait]
 impl Handler for Tracer {
     async fn run(&self, conn: Conn) -> Conn {
-        conn.with_state(TracerRun)
+        let path = path(&conn);
+        let method = conn.method();
+        let ip = ip(&conn);
+        info_span!("Request", http.method = ?method, ip = ?ip, path = ?path).in_scope(|| {
+            info!("received");
+            conn.with_state(TracerRun)
+        })
+        // conn.with_state(TracerRun)
     }
     async fn init(&mut self, info: &mut Info) {
         info!("Starting server");
@@ -19,33 +26,37 @@ impl Handler for Tracer {
     }
 
     async fn before_send(&self, mut conn: Conn) -> Conn {
-        let path = path(&conn);
-        let method = conn.method();
         let response_len = conn.response_len().unwrap_or_default();
         let response_time = response_time(&conn).to_string();
-        let ip = ip(&conn);
-        let status = conn.status().unwrap_or_else(|| Status::NotFound);
+        let status = conn.status(); //.unwrap_or_else(|| Status::NotFound);
 
         if conn.state::<TracerRun>().is_some() {
             conn.inner_mut().after_send(move |s| {
-                info!("received");
-                info_span!("Response", http.status_code = status as u16, http.duration = ?response_time, http.response_len = ?response_len).in_scope(|| {
-                    if s.is_success() {
-                        if status.is_server_error() {
-                            let span = error_span!("Internal error", error = field::Empty);
-                            span.record("error", &"server error");
-                        } else if status.is_client_error() {
-                            warn_span!("Client error").in_scope(|| warn!("sent"));
-                        } else {
-                            info_span!("Request", http.method = ?method, ip = ?ip, path = ?path).in_scope(|| {
+                info_span!("Response", http.status_code = field::Empty, http.duration = ?response_time, http.response_len = ?response_len).in_scope(|| {
+                    if let Some(status) = status {
+                        if s.is_success() {
+                            if status.is_server_error() {
+                                let span = error_span!("Internal error", error = field::Empty);
+                                span.record("error", &"server error");
+                            } else if status.is_client_error() {
+                                warn_span!("Client error").in_scope(|| warn!("sent"));
+                            } else {
+                                // info_span!("Request", http.method = ?method, ip = ?ip, path = ?path).in_scope(|| {
                                 info!("sent")
-                            });
+                                // });
+                            }
+                        } else {
+                            let span = error_span!("Internal error", error = field::Empty);
+                            span.in_scope(|| error!("cannot be sent"));
+                            // error_span!("Internal error").in_scope(|| warn!("sending error"));
                         }
                     } else {
-                        let span = error_span!("Internal error", error = field::Empty);
-                        span.in_scope(|| error!("cannot be sent"));
-                        // error_span!("Internal error").in_scope(|| warn!("sending error"));
+                        // warn!("sent response with no status");
+                        let span = error_span!("Server error", error = field::Empty);
+                        span.record("error", &"sent response with no status");
+                        error_span!("Internal error").in_scope(|| error!("status not set, set the default status"));
                     }
+
                 });
             });
         }
