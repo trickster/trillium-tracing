@@ -64,25 +64,25 @@ impl Handler for Tracer {
     }
 }
 
-pub struct ResponseTimeOutput(Instant);
+struct ResponseTimeOutput(Instant);
 impl Display for ResponseTimeOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{:?}", Instant::now() - self.0))
     }
 }
 
-pub fn response_time(conn: &Conn) -> ResponseTimeOutput {
+fn response_time(conn: &Conn) -> ResponseTimeOutput {
     ResponseTimeOutput(conn.inner().start_time())
 }
 
-pub fn ip(conn: &Conn) -> Cow<'static, str> {
+fn ip(conn: &Conn) -> Cow<'static, str> {
     match conn.inner().peer_ip() {
         Some(peer) => format!("{:?}", peer).into(),
         None => "-".into(),
     }
 }
 
-pub fn path(conn: &Conn) -> Cow<'static, str> {
+fn path(conn: &Conn) -> Cow<'static, str> {
     let p = conn.inner().path();
     format!("{p:?}").into()
 }
