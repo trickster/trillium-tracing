@@ -1,13 +1,20 @@
 [package]
 name = "trillium-tracing"
 version = "0.1.0"
+authors = ["Sivaram Konanki <ksiva+github@hey.com"]
 edition = "2021"
+description = "tracing support for trillium"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/trickster/trillium-tracing"
+readme = "README.md"
+keywords = ["trillium", "tracing", "async"]
+categories = ["web-programming"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tracing = "0.1.35"
-trillium = "0.2.2"
+tracing = "0.1.37"
+trillium = "0.2.3"
 
 [dev-dependencies]
 smol = "1.2.5"
